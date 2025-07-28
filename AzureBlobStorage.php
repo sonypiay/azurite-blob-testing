@@ -111,11 +111,13 @@ class AzureBlobStorage
         ];
         $signature = $this->createSignatureSharedKey($url, $method, $headers);
 
+        $headersCurl = [
+            "Authorization: SharedKey {$this->accountName}:{$signature}"
+        ];
+
         foreach( $headers as $k => $v ) {
             $headersCurl[] = "{$k}: {$v}";
         }
-
-        $headersCurl[] = "Authorization: SharedKey {$this->accountName}:{$signature}";
 
         $ch = curl_init();
         curl_setopt_array($ch, [
@@ -133,16 +135,30 @@ class AzureBlobStorage
 
     public function listBlobs()
     {
+        date_default_timezone_set('UTC');
+        $method = "GET";
+        $currentDate = gmdate('D, d M Y H:i:s T');
         $url = "{$this->endpoint}/{$this->containerName}?restype=container&comp=list";
 
-        $ch = curl_init();
+        $headers = [
+            "x-ms-version" => $this->version,
+            "x-ms-date" => $currentDate,
+        ];
+        $signature = $this->createSignatureSharedKey($url, $method, $headers);
 
-        curl_setopt($ch, CURLOPT_URL, $url);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, [
-            "x-ms-version: {$this->version}",
-            "x-ms-date: " . gmdate('D, d M Y H:i:s T'),
-            "Authorization: SharedKey {$this->accountName}:{$this->accountKey}"
+        $headersCurl = [
+            "Authorization: SharedKey {$this->accountName}:{$signature}"
+        ];
+
+        foreach( $headers as $k => $v ) {
+            $headersCurl[] = "{$k}: {$v}";
+        }
+
+        $ch = curl_init();
+        curl_setopt_array($ch, [
+            CURLOPT_URL => $url,
+            CURLOPT_HTTPHEADER => $headersCurl,
+            CURLOPT_RETURNTRANSFER => true,
         ]);
 
         $response = curl_exec($ch);
@@ -151,21 +167,47 @@ class AzureBlobStorage
         return $response;
     }
 
-    public function uploadBlob(string $blobName, string $filePath)
+    public function uploadBlob(string $filePath)
     {
-        $token = "";
-        $url = "{$this->endpoint}/{$this->containerName}/{$blobName}?{$token}";
+        date_default_timezone_set('UTC');
+        $fileInfo = pathinfo($filePath);
+        $blobName = $fileInfo['basename'];
 
+        $url = "{$this->endpoint}/{$this->containerName}/{$blobName}";
+        $method = "PUT";
+        $currentDate = gmdate('D, d M Y H:i:s T');
+        $headers = [
+            "x-ms-version" => $this->version,
+            "x-ms-date" => $currentDate,
+            "x-ms-blob-type" => "BlockBlob",
+            "Content-Length" => filesize($filePath),
+            "Content-Type" => mime_content_type($filePath),
+        ];
+        $signature = $this->createSignatureSharedKey($url, $method, $headers);
+        $headersCurl = [
+            "Authorization: SharedKey {$this->accountName}:{$signature}"
+        ];
+
+        foreach( $headers as $k => $v ) {
+            $headersCurl[] = "{$k}: {$v}";
+        }
+
+        $fileHandle = fopen($filePath, 'r');
         $ch = curl_init();
 
-        curl_setopt($ch, CURLOPT_URL, $url);
-        curl_setopt($ch, CURLOPT_PUT, true);
-        curl_setopt($ch, CURLOPT_INFILE, fopen($filePath, 'r'));
-        curl_setopt($ch, CURLOPT_INFILESIZE, filesize($filePath));
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt_array($ch, [
+            CURLOPT_URL => $url,
+            CURLOPT_CUSTOMREQUEST => $method,
+            CURLOPT_HTTPHEADER => $headersCurl,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_PUT => true,
+            CURLOPT_INFILE => $fileHandle,
+            CURLOPT_INFILESIZE => filesize($filePath)
+        ]);
         
         $response = curl_exec($ch);
         curl_close($ch);
+        fclose($fileHandle);
 
         return $response;
     }
