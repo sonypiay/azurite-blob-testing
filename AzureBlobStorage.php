@@ -2,10 +2,11 @@
 
 class AzureBlobStorage
 {
+    private string $azureProtocol;
     private string $accountName;
     private string $accountKey;
     private string $endpoint;
-    private string $version = '2019-12-12';
+    private string $version = '2020-02-10';
     public string $containerName = 'default';
 
     public function __construct( ?string $containerName = '' )
@@ -14,6 +15,8 @@ class AzureBlobStorage
         $this->accountName = $_ENV['AZURE_STORAGE_ACCOUNT_NAME'];
         $this->accountKey = $_ENV['AZURE_STORAGE_ACCOUNT_KEY'];
         $this->endpoint = $_ENV['AZURE_STORAGE_BLOB_ENDPOINT'];
+        $this->azureProtocol = $_ENV['AZURE_STORAGE_PROTOCOL'];
+        $this->version = $_ENV['AZURE_STORAGE_API_VERSION'];
     }
 
     public function setContainerName(string $containerName): void
@@ -108,6 +111,7 @@ class AzureBlobStorage
         $headers = [
             "x-ms-version" => $this->version,
             "x-ms-date" => $currentDate,
+            "Content-Length" => strlen($containerName),
         ];
         $signature = $this->createSignatureSharedKey($url, $method, $headers);
 
@@ -211,4 +215,54 @@ class AzureBlobStorage
 
         return $response;
     }
+
+    public function getBlob(string $blobName)
+    {
+        $result = $this->generateUrl($blobName);
+        return $result;
+    }
+
+    public function generateUrl(string $blobName)
+    {
+        date_default_timezone_set('UTC');
+
+        $protocol = $this->azureProtocol;
+        $start  = gmdate('Y-m-d\TH:i:s\Z', time() - 300);
+        $expiry = gmdate('Y-m-d\TH:i:s\Z', time() + 3600);
+
+        $permissions = "r";  // read
+        $resource = "b";     // blob
+
+        // StringToSign versi Azurite (lebih pendek)
+        $arraySign = [
+            $permissions,                                // sp
+            $start,                                      // st
+            $expiry,                                     // se
+            "/blob/{$this->accountName}/{$this->containerName}/{$blobName}", // canonicalizedResource
+            "",                                          // identifier (tidak dipakai)
+            "",                                          // IP restriction
+            $protocol,                                   // spr
+            $this->version,                              // sv
+            $resource,                                   // sr
+            "", "", "", "", ""                           // rscc, rscd, rsce, rscl, rsct
+        ];
+
+        $stringToSign = implode("\n", $arraySign) . "\n";
+
+        $decodeKey = base64_decode($this->accountKey, true);
+        $signature = base64_encode(hash_hmac('sha256', $stringToSign, $decodeKey, true));
+
+        $query = http_build_query([
+            'sv'  => $this->version,
+            'st'  => $start,
+            'se'  => $expiry,
+            'sr'  => $resource,
+            'sp'  => $permissions,
+            'spr' => $protocol,
+            'sig' => $signature
+        ]);
+
+        return "{$this->endpoint}/{$this->containerName}/{$blobName}?{$query}";
+    }
+
 }

@@ -2,5 +2,6 @@
 
 require_once __DIR__ . '/bootstrap.php';
 
+$filename = "duh_jadi_malu.jpg";
 $blogStorage = new AzureBlobStorage('uploads');
-echo $blogStorage->uploadBlob(__DIR__ . '/files/duh_jadi_malu.jpg');
+echo $blogStorage->getBlob($filename) . "\n";
